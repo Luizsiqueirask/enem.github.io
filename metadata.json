@@ -1,0 +1,6 @@
+{
+  "name": "ENEM 2026 - Portal de Colaboradores",
+  "description": "Plataforma para inscrição e gestão de colaboradores para o ENEM 2026.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

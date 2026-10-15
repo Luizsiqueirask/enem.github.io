@@ -1,0 +1,24 @@
+# GitLab CI/CD Pipeline para GitLab Pages
+image: node:20
+
+stages:
+  - deploy
+
+pages:
+  stage: deploy
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - node_modules/
+  script:
+    - npm ci --prefer-offline || npm install
+    - npm run build
+    - rm -rf public
+    - mv dist public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

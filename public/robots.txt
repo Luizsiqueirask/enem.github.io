@@ -1,0 +1,13 @@
+User-agent: *
+Disallow: /data/
+Disallow: /data
+Disallow: /api/
+Disallow: /admin
+Disallow: /admin/
+Disallow: /*.json$
+Disallow: /*applications*
+Disallow: /*vacancies*
+Disallow: /*.env*
+Disallow: /server.ts
+
+# Bloqueio total de indexação de diretórios e arquivos de dados confidenciais
