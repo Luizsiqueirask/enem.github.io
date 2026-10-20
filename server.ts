@@ -224,6 +224,63 @@ app.use(express.json());
     });
   });
 
+  // Endpoint de Diagnóstico e Debug Temporário (Vercel & Supabase)
+  app.get("/api/debug/status", async (req, res) => {
+    try {
+      const config = getSupabaseConfig();
+      const startTime = Date.now();
+      const test = await testSupabaseConnection();
+      const latencyMs = Date.now() - startTime;
+
+      const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+      const rawAnonKey = 
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
+        process.env.SUPABASE_ANON_KEY || 
+        process.env.VITE_SUPABASE_ANON_KEY || 
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
+        process.env.SUPABASE_PUBLISHABLE_KEY || 
+        "";
+      const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "";
+
+      return res.json({
+        timestamp: new Date().toISOString(),
+        platform: process.env.VERCEL ? "Vercel Serverless" : "Local / Node.js",
+        vercel: {
+          isVercel: Boolean(process.env.VERCEL),
+          env: process.env.VERCEL_ENV || "none",
+          region: process.env.VERCEL_REGION || "local"
+        },
+        environmentVariables: {
+          hasSupabaseUrl: Boolean(rawUrl),
+          NEXT_PUBLIC_SUPABASE_URL: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+          SUPABASE_URL: Boolean(process.env.SUPABASE_URL),
+          VITE_SUPABASE_URL: Boolean(process.env.VITE_SUPABASE_URL),
+          effectiveUrl: rawUrl ? rawUrl.replace(/(https?:\/\/)([^.]+)(.*)/, "$1$2***$3") : "NÃO DEFINIDA",
+          hasAnonKey: Boolean(rawAnonKey),
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+          SUPABASE_ANON_KEY: Boolean(process.env.SUPABASE_ANON_KEY),
+          VITE_SUPABASE_ANON_KEY: Boolean(process.env.VITE_SUPABASE_ANON_KEY),
+          SUPABASE_PUBLISHABLE_KEY: Boolean(process.env.SUPABASE_PUBLISHABLE_KEY),
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY),
+          effectiveAnonKeyLength: rawAnonKey ? `${rawAnonKey.substring(0, 12)}... (${rawAnonKey.length} caracteres)` : "NÃO DEFINIDA",
+          hasServiceRoleKey: Boolean(rawServiceKey),
+          SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+          SUPABASE_SECRET_KEY: Boolean(process.env.SUPABASE_SECRET_KEY),
+          hasPostgresUrl: Boolean(process.env.POSTGRES_URL)
+        },
+        supabaseTest: {
+          configured: config.isConfigured,
+          connected: test.connected,
+          tablesCreated: (test as any).tablesCreated ?? false,
+          message: test.message,
+          latencyMs
+        }
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // Middleware de Autenticação Obrigatória Supabase e Resolução de Perfil
   const requireSupabaseAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const authHeader = req.headers.authorization;

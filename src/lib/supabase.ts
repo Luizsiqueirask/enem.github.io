@@ -57,23 +57,28 @@ export function getSupabaseCredentials(): { url: string; anonKey: string; isCust
   const procEnv = typeof process !== 'undefined' ? (process.env || {}) : {};
 
   const envUrl = (
+    metaEnv.NEXT_PUBLIC_SUPABASE_URL ||
     metaEnv.VITE_SUPABASE_URL ||
     metaEnv.SUPABASE_URL ||
-    metaEnv.NEXT_PUBLIC_SUPABASE_URL ||
+    procEnv.NEXT_PUBLIC_SUPABASE_URL ||
     procEnv.VITE_SUPABASE_URL ||
     procEnv.SUPABASE_URL ||
-    procEnv.NEXT_PUBLIC_SUPABASE_URL ||
     ''
   ) as string;
 
   const envKey = (
-    metaEnv.VITE_SUPABASE_ANON_KEY ||
-    metaEnv.SUPABASE_ANON_KEY ||
     metaEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    procEnv.VITE_SUPABASE_ANON_KEY ||
-    procEnv.SUPABASE_ANON_KEY ||
+    metaEnv.SUPABASE_ANON_KEY ||
+    metaEnv.VITE_SUPABASE_ANON_KEY ||
+    metaEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    metaEnv.SUPABASE_PUBLISHABLE_KEY ||
     procEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    procEnv.SUPABASE_ANON_KEY ||
+    procEnv.VITE_SUPABASE_ANON_KEY ||
+    procEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    procEnv.SUPABASE_PUBLISHABLE_KEY ||
     procEnv.SUPABASE_SERVICE_ROLE_KEY ||
+    procEnv.SUPABASE_SECRET_KEY ||
     ''
   ) as string;
 
