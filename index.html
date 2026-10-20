@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ENEM 2026 - Portal de Colaboradores</title>
+    <meta name="description" content="Plataforma para inscrição e gestão de colaboradores para o ENEM 2026." />
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
+    <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet" />
+    <meta property="og:title" content="ENEM 2026 - Portal de Colaboradores" />
+    <meta property="og:description" content="Plataforma para inscrição e gestão de colaboradores para o ENEM 2026." />
+    <script>
+      (function() {
+        // Suppress Vite HMR / WebSocket connection errors in AI Studio iframe environment
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event && event.reason;
+          if (reason) {
+            var msg = (reason.message || String(reason) || '');
+            var stack = (reason.stack || '');
+            if (
+              msg.indexOf('WebSocket') !== -1 ||
+              msg.indexOf('WebSocket closed without opened') !== -1 ||
+              stack.indexOf('createWebSocketModuleRunnerTransport') !== -1 ||
+              stack.indexOf('@vite/client') !== -1
+            ) {
+              event.preventDefault();
+              return;
+            }
+          }
+        });
+        window.addEventListener('error', function(event) {
+          var msg = (event && event.message) || '';
+          var filename = (event && event.filename) || '';
+          if (
+            msg.indexOf('WebSocket') !== -1 ||
+            filename.indexOf('@vite/client') !== -1
+          ) {
+            event.preventDefault();
+            return;
+          }
+        });
+
+        try {
+          var rawFetch = window.fetch;
+          var currentFetch = typeof rawFetch === 'function' ? rawFetch.bind(window) : rawFetch;
+          var desc = {
+            configurable: true,
+            enumerable: true,
+            get: function() {
+              return currentFetch;
+            },
+            set: function(fn) {
+              currentFetch = fn;
+            }
+          };
+
+          try {
+            Object.defineProperty(window, 'fetch', desc);
+          } catch (e1) {}
+
+          try {
+            if (typeof Window !== 'undefined' && Window.prototype) {
+              Object.defineProperty(Window.prototype, 'fetch', desc);
+            }
+          } catch (e2) {}
+        } catch (err) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
