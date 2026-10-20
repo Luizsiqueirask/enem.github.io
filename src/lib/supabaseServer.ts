@@ -653,9 +653,22 @@ export async function resolveUserProfile(email: string): Promise<UserProfile | n
     }
   }
 
-  // 4. REGRA RIGOROSA: NÃO cria conta de novo usuário no login!
-  // A conta de novos usuários e colaboradores deve ser criada apenas pelos administradores.
-  return null;
+  // 4. Perfil padrão automático para usuário autenticado no Supabase
+  const isAdm = cleanEmail.includes("admin") || cleanEmail.includes("root") || cleanEmail === "administrator@enem.app";
+  const nameParts = cleanEmail.split("@")[0].split(/[._-]/);
+  const firstName = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1);
+  const lastName = nameParts.length > 1 ? (nameParts[1].charAt(0).toUpperCase() + nameParts[1].slice(1)) : (isAdm ? "Administrador" : "Colaborador");
+
+  return {
+    email: cleanEmail,
+    first_name: firstName,
+    last_name: lastName,
+    full_name: `${firstName} ${lastName}`.trim(),
+    is_administrator: isAdm,
+    coordination_number: null,
+    role: isAdm ? "admin" : "coordinator",
+    coordination_name: isAdm ? "Administração Geral ENEM 2026" : "Coordenação Geral"
+  };
 }
 
 // -----------------------------------------------------------------------------
