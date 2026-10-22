@@ -118,8 +118,12 @@ export function DebugModal({ isOpen = true, onClose, isEmbedded = false }: Debug
       const contentType = res.headers.get('content-type') || '';
       
       if (contentType.includes('application/json')) {
-        const data = await res.json();
-        setBackendDebug({ ...data, latencyMs: latency, httpStatus: res.status });
+        const data = await res.json().catch(() => null);
+        if (data) {
+          setBackendDebug({ ...data, latencyMs: latency, httpStatus: res.status });
+        } else {
+          setBackendError(`Backend respondeu com JSON inválido (${res.status})`);
+        }
       } else {
         const text = await res.text();
         setBackendError(`Backend respondeu com formato não-JSON (${res.status} ${res.statusText}): ${text.substring(0, 150)}`);
@@ -216,9 +220,9 @@ export function DebugModal({ isOpen = true, onClose, isEmbedded = false }: Debug
         const contentType = res.headers.get('content-type') || '';
         let data: any = null;
         if (contentType.includes('application/json')) {
-          data = await res.json();
+          data = await res.json().catch(() => null);
         } else {
-          data = await res.text();
+          data = await res.text().catch(() => '');
         }
         return {
           status: res.ok ? ('ok' as const) : ('error' as const),
@@ -267,9 +271,9 @@ export function DebugModal({ isOpen = true, onClose, isEmbedded = false }: Debug
       const contentType = res.headers.get('content-type') || '';
       let apiData: any = null;
       if (contentType.includes('application/json')) {
-        apiData = await res.json();
+        apiData = await res.json().catch(() => null);
       } else {
-        apiData = await res.text();
+        apiData = await res.text().catch(() => '');
       }
       log.steps.push({
         step: '1. API Serverless (/api/auth/login)',
@@ -352,7 +356,23 @@ export function DebugModal({ isOpen = true, onClose, isEmbedded = false }: Debug
     }
   }, [isOpen, isEmbedded]);
 
+  const authUserStr = typeof window !== 'undefined' ? localStorage.getItem('enem_supabase_auth_user') : null;
+  let currentAuthUser: any = null;
+  try {
+    currentAuthUser = authUserStr ? JSON.parse(authUserStr) : null;
+  } catch {}
+
   if (!isEmbedded && !isOpen) return null;
+
+  if (!currentAuthUser?.is_administrator) {
+    return isEmbedded ? (
+      <div className="p-8 text-center bg-white rounded-2xl border border-red-200 space-y-2">
+        <ShieldAlert className="w-8 h-8 text-red-500 mx-auto" />
+        <h3 className="font-bold text-slate-800">Acesso Restrito ao Administrador Geral</h3>
+        <p className="text-xs text-slate-500">O painel de diagnóstico em tempo real é reservado exclusivamente a contas administradoras.</p>
+      </div>
+    ) : null;
+  }
 
   const innerContent = (
     <div className={`bg-white w-full ${isEmbedded ? 'rounded-2xl border border-slate-200 shadow-sm' : 'max-w-4xl rounded-2xl shadow-2xl border border-slate-200 max-h-[90vh]'} overflow-hidden flex flex-col`}>
@@ -365,8 +385,8 @@ export function DebugModal({ isOpen = true, onClose, isEmbedded = false }: Debug
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-bold">Diagnóstico em Tempo Real • Vercel & Supabase</h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-amber-950">
-                Aba Temporária
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-slate-950">
+                Acesso Exclusivo Administrador
               </span>
             </div>
             <p className="text-xs text-indigo-200">

@@ -85,8 +85,15 @@ export function getSupabaseCredentials(): { url: string; anonKey: string; isCust
   const localUrl = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_URL) || '' : '';
   const localKey = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_ANON) || '' : '';
 
-  const finalUrl = (localUrl || envUrl).trim();
+  let finalUrl = (localUrl || envUrl).trim();
   const finalKey = (localKey || envKey).trim();
+
+  // Se a URL informada for o domínio da Vercel ou o próprio host frontend, NÃO é a URL do Supabase!
+  // URLs reais do Supabase terminam em .supabase.co (ex: https://xyz.supabase.co)
+  if (finalUrl.includes('vercel.app') || (typeof window !== 'undefined' && window.location.origin && finalUrl.startsWith(window.location.origin))) {
+    console.warn(`[Supabase] A URL '${finalUrl}' é o endereço da aplicação web na Vercel e NÃO a Project URL do Supabase. Ignorando para evitar erros de resposta HTML.`);
+    finalUrl = '';
+  }
 
   return {
     url: finalUrl,
@@ -165,9 +172,16 @@ export async function testSupabaseConnection(): Promise<{ success: boolean; mess
       tableCount: data ? data.length : 0
     };
   } catch (err: any) {
+    const msg = err.message || '';
+    if (msg.includes('Unexpected token') || msg.includes('<!DOCTYPE') || msg.includes('is not valid JSON')) {
+      return {
+        success: false,
+        message: 'A URL informada respondeu com uma página HTML (Vercel) e não com a API do Supabase. Certifique-se de usar a Project URL do Supabase (formato: https://seu-projeto.supabase.co).'
+      };
+    }
     return {
       success: false,
-      message: `Falha na requisição para o Supabase: ${err.message || 'Erro de rede'}`
+      message: `Falha na requisição para o Supabase: ${msg || 'Erro de rede'}`
     };
   }
 }
@@ -288,23 +302,28 @@ export async function getVacanciesFromSupabase(): Promise<Vacancy[]> {
   const client = getSupabaseClient();
   if (!client) return [];
 
-  const { data, error } = await client
-    .from('vacancies')
-    .select('*')
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await client
+      .from('vacancies')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    console.error('Erro ao buscar vagas do Supabase:', error);
+    if (error) {
+      console.warn('Aviso ao buscar vagas do Supabase:', error.message);
+      return [];
+    }
+    
+    const rawList = (data || []) as Vacancy[];
+    // Filtra dados fakes / sementes de exemplo para nunca exibir na aplicação
+    return rawList.filter(v => 
+      !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
+      !FAKE_COORDINATOR_NAMES.includes(v.coordinator) &&
+      !FAKE_COORD_NUMBERS.includes(v.coordination_number)
+    );
+  } catch (err: any) {
+    console.warn('Falha na consulta de vagas do Supabase:', err.message);
     return [];
   }
-  
-  const rawList = (data || []) as Vacancy[];
-  // Filtra dados fakes / sementes de exemplo para nunca exibir na aplicação
-  return rawList.filter(v => 
-    !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
-    !FAKE_COORDINATOR_NAMES.includes(v.coordinator) &&
-    !FAKE_COORD_NUMBERS.includes(v.coordination_number)
-  );
 }
 
 export async function createVacancyInSupabase(vacancy: Omit<Vacancy, 'id' | 'created_at'>): Promise<{ success: boolean; id?: number; error?: string }> {
@@ -500,21 +519,26 @@ export async function getCoordinationsFromSupabase(): Promise<any[]> {
   const client = getSupabaseClient();
   if (!client) return [];
 
-  const { data, error } = await client
-    .from('coordinations')
-    .select('*')
-    .order('coordination_number', { ascending: true });
+  try {
+    const { data, error } = await client
+      .from('coordinations')
+      .select('*')
+      .order('coordination_number', { ascending: true });
 
-  if (error) {
-    console.warn('Erro ao buscar coordenações do Supabase:', error.message);
+    if (error) {
+      console.warn('Erro ao buscar coordenações do Supabase:', error.message);
+      return [];
+    }
+    const rawList = data || [];
+    // Exclui coordenações fictícias de teste ('101'..'105', 'Carlos Silva', etc.)
+    return rawList.filter(c => 
+      !FAKE_COORD_NUMBERS.includes(c.coordination_number) &&
+      !FAKE_COORDINATOR_NAMES.includes(c.coordinator_name)
+    );
+  } catch (err: any) {
+    console.warn('Falha na consulta de coordenações do Supabase:', err.message);
     return [];
   }
-  const rawList = data || [];
-  // Exclui coordenações fictícias de teste ('101'..'105', 'Carlos Silva', etc.)
-  return rawList.filter(c => 
-    !FAKE_COORD_NUMBERS.includes(c.coordination_number) &&
-    !FAKE_COORDINATOR_NAMES.includes(c.coordinator_name)
-  );
 }
 
 export async function saveCoordinationInSupabase(coord: {
@@ -527,28 +551,37 @@ export async function saveCoordinationInSupabase(coord: {
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Supabase não conectado' };
 
-  const { error } = await client
-    .from('coordinations')
-    .upsert(coord, { onConflict: 'coordination_number' });
+  try {
+    const { error } = await client
+      .from('coordinations')
+      .upsert(coord, { onConflict: 'coordination_number' });
 
-  if (error) return { success: false, error: error.message };
-  return { success: true };
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Erro ao salvar coordenação' };
+  }
 }
 
 export async function getUserProfilesFromSupabase(): Promise<any[]> {
   const client = getSupabaseClient();
   if (!client) return [];
 
-  const { data, error } = await client
-    .from('user_profiles')
-    .select('*')
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await client
+      .from('user_profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    console.warn('Erro ao buscar perfis de usuário do Supabase:', error.message);
+    if (error) {
+      console.warn('Erro ao buscar perfis de usuário do Supabase:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err: any) {
+    console.warn('Falha na consulta de perfis de usuário do Supabase:', err.message);
     return [];
   }
-  return data || [];
 }
 
 export async function saveUserProfileInSupabase(profile: any): Promise<{ success: boolean; error?: string }> {

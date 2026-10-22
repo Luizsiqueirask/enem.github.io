@@ -110,14 +110,20 @@ export let memoryUserPasswords: Map<string, string> = new Map([
 ]);
 
 let activeClient: SupabaseClient | null = null;
-
+ 
 export function getSupabaseConfig() {
-  const url = (
+  let url = (
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     process.env.SUPABASE_URL ||
     process.env.VITE_SUPABASE_URL ||
     ""
   ).trim();
+
+  // Se a URL for o próprio domínio da Vercel, NÃO é a Project URL do Supabase!
+  if (url.includes("vercel.app")) {
+    console.warn(`[Supabase Server] A URL '${url}' é o domínio da Vercel e não a URL do Supabase. Ignorando.`);
+    url = "";
+  }
 
   const key = (
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -1555,11 +1561,20 @@ export async function testSupabaseConnection(customUrl?: string, customKey?: str
       sampleCount: data ? data.length : 0
     };
   } catch (err: any) {
+    const msg = err.message || "";
+    if (msg.includes("Unexpected token") || msg.includes("<!DOCTYPE") || msg.includes("is not valid JSON")) {
+      return {
+        connected: false,
+        configured: false,
+        tablesCreated: false,
+        message: "A URL configurada retornou uma página HTML em vez da API do Supabase. Verifique se você não configurou o endereço da Vercel (https://...vercel.app) em vez da Project URL do Supabase (https://xyz.supabase.co)."
+      };
+    }
     return {
       connected: false,
       configured: true,
       tablesCreated: false,
-      message: `Exceção na conexão: ${err.message}`
+      message: `Exceção na conexão: ${msg}`
     };
   }
 }
@@ -1779,7 +1794,7 @@ DROP POLICY IF EXISTS "Manage user accounts" ON public.user_accounts;
 CREATE POLICY "Manage user accounts" ON public.user_accounts FOR ALL USING (true);
 
 -- 9. LIMPEZA TOTAL DE DADOS DE TESTE / FAKES
-DELETE FROM public.vacancies WHERE id IN (1, 2) OR coordinator IN ('Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza') OR coordination_number IN ('101', '102', '103', '104', '105', '00001', '00002');
+DELETE FROM public.vacancies WHERE id IN (1, 2, 3, 4, 5, 6, 7, 8, 9) OR coordinator IN ('Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza') OR coordination_number IN ('101', '102', '103', '104', '105', '00001', '00002');
 DELETE FROM public.coordinations WHERE coordination_number IN ('101', '102', '103', '104', '105', '00001', '00002') OR coordinator_name IN ('Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza');
 DELETE FROM public.access_tokens WHERE token IN ('TOKEN-ENEM2026-ADMIN-MASTER', 'TOKEN-COORD-RJ-2026', 'TOKEN-COORD-NIT-2026', 'TOKEN-GESTAO-BAIXADA-2026');
 

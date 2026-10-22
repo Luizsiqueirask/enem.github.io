@@ -287,9 +287,10 @@ export default function App() {
       const res = await fetch('/api/database/status', {
         headers: getAuthHeaders()
       });
-      if (res.ok) {
-        const data = await res.json();
-        setDatabaseStatus(data);
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data) setDatabaseStatus(data);
       }
     } catch {}
   };
@@ -532,8 +533,8 @@ export default function App() {
       });
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
-        const data = await res.json();
-        if (res.ok && data.success) {
+        const data = await res.json().catch(() => null);
+        if (data && res.ok && data.success) {
           const token = data.session?.access_token || '';
           const user = data.user;
           setAuthToken(token);
@@ -700,7 +701,7 @@ export default function App() {
       if (res.ok) {
         const ct = res.headers.get('content-type') || '';
         if (ct.includes('application/json')) {
-          const data = await res.json();
+          const data = await res.json().catch(() => null);
           if (Array.isArray(data)) {
             const clean = data.filter((c: any) => 
               !FAKE_COORD_NUMBERS.includes(String(c.coordination_number)) &&
@@ -739,9 +740,10 @@ export default function App() {
         },
         body: JSON.stringify(coordFormData)
       });
-      const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json().catch(() => ({})) : {};
       if (!res.ok) {
-        setMessage({ type: 'error', text: data.error || 'Erro ao salvar coordenação.' });
+        setMessage({ type: 'error', text: data.error || 'Erro ao salvar coordenação no servidor.' });
         setTimeout(() => setMessage(null), 5000);
         return;
       }
@@ -781,8 +783,9 @@ export default function App() {
       const res = await fetch('/api/admin/users', {
         headers: getAuthHeaders()
       });
-      if (res.ok) {
-        const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('application/json')) {
+        const data = await res.json().catch(() => null);
         if (Array.isArray(data)) {
           setUserAccounts(data);
         }
@@ -873,7 +876,8 @@ export default function App() {
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json().catch(() => ({})) : {};
       if (!res.ok) {
         setUserModalError(data.error || 'Erro ao salvar alterações da conta.');
         setIsSavingUserAccount(false);
@@ -947,11 +951,14 @@ export default function App() {
         const res = await fetch(`/api/user/coordination-status/${encodeURIComponent(num)}`, {
           headers: getAuthHeaders()
         });
-        if (res.ok) {
-          const data = await res.json();
-          setUserCoordStatusPreview(data);
-          if (data.exists && data.name && !userCoordName) {
-            setUserCoordName(data.name);
+        const ct = res.headers.get('content-type') || '';
+        if (res.ok && ct.includes('application/json')) {
+          const data = await res.json().catch(() => null);
+          if (data) {
+            setUserCoordStatusPreview(data);
+            if (data.exists && data.name && !userCoordName) {
+              setUserCoordName(data.name);
+            }
           }
         }
       } catch {}
@@ -986,7 +993,8 @@ export default function App() {
         })
       });
 
-      const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json().catch(() => ({})) : {};
       if (!res.ok) {
         setUserCoordError(data.error || 'Erro ao salvar vínculo de coordenação.');
         return;
@@ -1068,7 +1076,7 @@ export default function App() {
         .then(res => {
           const ct = res.headers.get('content-type') || '';
           if (res.ok && ct.includes('application/json')) {
-            return res.json();
+            return res.json().catch(() => null);
           }
           return null;
         })
@@ -1086,8 +1094,8 @@ export default function App() {
 
   useEffect(() => {
     if (authToken && authUser) {
-      // Conta comum não possui acesso às configurações de banco de dados ou gestão de usuários
-      if (!authUser.is_administrator && (adminTab === 'database' || adminTab === 'supabase' || adminTab === 'users')) {
+      // Conta comum não possui acesso às configurações de banco de dados, gestão de usuários ou diagnóstico
+      if (!authUser.is_administrator && (adminTab === 'database' || adminTab === 'supabase' || adminTab === 'users' || adminTab === 'debug')) {
         setAdminTab('candidates');
         return;
       }
@@ -1210,8 +1218,9 @@ export default function App() {
       const res = await fetch(endpoint, {
         headers: getAuthHeaders()
       });
-      if (res.ok) {
-        const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('application/json')) {
+        const data = await res.json().catch(() => null);
         if (Array.isArray(data)) {
           const clean = data.filter((v: any) => 
             !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
@@ -1248,15 +1257,13 @@ export default function App() {
       const res = await fetch('/api/admin/contributors', {
         headers: getAuthHeaders()
       });
-      if (res.ok) {
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setcontributors(data);
-            try { localStorage.setItem('enem_contributors', JSON.stringify(data)); } catch {}
-            return;
-          }
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (Array.isArray(data)) {
+          setcontributors(data);
+          try { localStorage.setItem('enem_contributors', JSON.stringify(data)); } catch {}
+          return;
         }
       }
     } catch (err) {
@@ -1278,10 +1285,13 @@ export default function App() {
       const endpoint = authUser?.is_administrator ? '/api/supabase/status' : '/api/supabase/public-status';
       const headers = authUser?.is_administrator ? getAuthHeaders() : {};
       const res = await fetch(endpoint, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setSupabaseStatus(data);
-        return;
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data) {
+          setSupabaseStatus(data);
+          return;
+        }
       }
     } catch (err) {
       console.warn('Aviso ao consultar status do Supabase via API:', err);
@@ -1361,10 +1371,11 @@ export default function App() {
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       });
-      const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json().catch(() => ({})) : {};
       setMessage({
         type: data.connected ? 'success' : 'error',
-        text: data.message
+        text: data.message || (res.ok ? 'Conexão testada com sucesso.' : 'Falha ao conectar com o banco.')
       });
       fetchSupabaseStatus();
       setTimeout(() => setMessage(null), 6000);
@@ -1380,11 +1391,12 @@ export default function App() {
     setIsSyncingSupabase(true);
     try {
       const res = await fetch('/api/supabase/sync', { method: 'POST' });
-      const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json().catch(() => ({})) : {};
       if (res.ok) {
         setMessage({
           type: 'success',
-          text: `Sincronização com Supabase concluída! ${data.vacanciesSynced} vagas e ${data.contributorsSynced} inscrições sincronizadas.`
+          text: `Sincronização com Supabase concluída! ${data.vacanciesSynced || 0} vagas e ${data.contributorsSynced || 0} inscrições sincronizadas.`
         });
         fetchSupabaseStatus();
         fetchVacancies();
@@ -1460,13 +1472,14 @@ export default function App() {
         body: JSON.stringify({ cpf: clean })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.registered) {
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data && data.registered) {
           setCpfVerificationStatus('registered');
           setCpfVerificationMessage('✓ CPF já cadastrado no Cebraspe (Sinapse). Liberado para continuar!');
           return true;
-        } else {
+        } else if (data) {
           setCpfVerificationStatus('not_registered');
           setCpfVerificationMessage('⚠ CPF não encontrado no Cebraspe. Realize o cadastro na página oficial.');
           if (triggerPopupOnNotRegistered) {
@@ -2643,6 +2656,28 @@ export default function App() {
                   <span>Painel Administrativo</span>
                 </button>
               )}
+
+              {/* Botão de Diagnóstico em Tempo Real (Acesso Exclusivo de Administrador) */}
+              {authUser?.is_administrator && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (view === 'admin') {
+                      setAdminTab('debug');
+                    } else {
+                      setIsDebugModalOpen(true);
+                    }
+                  }}
+                  title="Diagnóstico em tempo real: Variáveis de ambiente e conexão ao Supabase (Acesso Exclusivo de Administrador)"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-900 border border-amber-300 transition-all cursor-pointer shadow-xs"
+                >
+                  <Terminal className="w-3.5 h-3.5 text-amber-700" />
+                  <span className="hidden md:inline">Diagnóstico em Tempo Real</span>
+                  <span className="text-[10px] bg-amber-600 text-white font-black px-1.5 py-0.5 rounded-md uppercase">
+                    Admin
+                  </span>
+                </button>
+              )}
             </div>
 
             {/* User Chip & Logout OR Admin Access Button */}
@@ -2973,6 +3008,15 @@ export default function App() {
                 </button>
 
                 <div className="pt-2 flex flex-col items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsDebugModalOpen(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Terminal className="w-4 h-4 text-amber-600" />
+                    <span>Testar Variáveis & Conexão Supabase (Debug)</span>
+                    <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-extrabold uppercase">Aba Temporária</span>
+                  </button>
 
                   <button
                     type="button"
@@ -3791,23 +3835,25 @@ export default function App() {
                     </button>
                   )}
 
-                  {/* Nova Aba Temporária: Diagnóstico & Debug Supabase / Vercel */}
-                  <button
-                    type="button"
-                    onClick={() => setAdminTab('debug')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      adminTab === 'debug'
-                        ? 'bg-amber-500 text-white shadow-sm'
-                        : 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200'
-                    }`}
-                    title="Aba temporária para diagnóstico de variáveis de ambiente e conexão ao Supabase"
-                  >
-                    <Terminal className="w-4 h-4 text-amber-600" />
-                    <span>🔧 Diagnóstico / Debug</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-200 text-amber-900">
-                      Temporário
-                    </span>
-                  </button>
+                  {/* Aba: Diagnóstico em Tempo Real Supabase / Vercel (Apenas Administrador Geral) */}
+                  {authUser?.is_administrator && (
+                    <button
+                      type="button"
+                      onClick={() => setAdminTab('debug')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        adminTab === 'debug'
+                          ? 'bg-amber-500 text-white shadow-sm'
+                          : 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200'
+                      }`}
+                      title="Diagnóstico em tempo real de variáveis de ambiente e conexão ao Supabase (Apenas Administrador)"
+                    >
+                      <Terminal className="w-4 h-4 text-amber-600" />
+                      <span>🔧 Diagnóstico em Tempo Real</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-200 text-amber-900">
+                        Admin
+                      </span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -5985,8 +6031,8 @@ CREATE POLICY "Public can manage contributors" ON public.contributors FOR ALL US
                     </pre>
                   </div>
                 </div>
-              ) : adminTab === 'debug' ? (
-                /* Aba Temporária de Diagnóstico e Debug Supabase / Vercel */
+              ) : (adminTab === 'debug' && authUser?.is_administrator) ? (
+                /* Aba de Diagnóstico em Tempo Real Supabase / Vercel (Apenas Administrador Geral) */
                 <div className="space-y-6">
                   <DebugModal isEmbedded={true} />
                 </div>
@@ -7277,8 +7323,10 @@ CREATE POLICY "Public can manage contributors" ON public.contributors FOR ALL US
         )}
       </AnimatePresence>
 
-      {/* Modal de Diagnóstico e Debug Temporário (Supabase & Vercel) */}
-      <DebugModal isOpen={isDebugModalOpen} onClose={() => setIsDebugModalOpen(false)} />
+      {/* Modal de Diagnóstico em Tempo Real (Acesso Exclusivo a Administradores) */}
+      {authUser?.is_administrator && (
+        <DebugModal isOpen={isDebugModalOpen} onClose={() => setIsDebugModalOpen(false)} />
+      )}
     </div>
   );
 }
