@@ -1779,7 +1779,7 @@ DROP POLICY IF EXISTS "Manage user accounts" ON public.user_accounts;
 CREATE POLICY "Manage user accounts" ON public.user_accounts FOR ALL USING (true);
 
 -- 9. LIMPEZA TOTAL DE DADOS DE TESTE / FAKES
-DELETE FROM public.vacancies WHERE id IN (1, 2, 3, 4, 5, 6, 7, 8, 9) OR coordinator IN ('Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza') OR coordination_number IN ('101', '102', '103', '104', '105', '00001', '00002');
+DELETE FROM public.vacancies WHERE id IN (1, 2) OR coordinator IN ('Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza') OR coordination_number IN ('101', '102', '103', '104', '105', '00001', '00002');
 DELETE FROM public.coordinations WHERE coordination_number IN ('101', '102', '103', '104', '105', '00001', '00002') OR coordinator_name IN ('Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza');
 DELETE FROM public.access_tokens WHERE token IN ('TOKEN-ENEM2026-ADMIN-MASTER', 'TOKEN-COORD-RJ-2026', 'TOKEN-COORD-NIT-2026', 'TOKEN-GESTAO-BAIXADA-2026');
 

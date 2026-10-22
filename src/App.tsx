@@ -2643,26 +2643,6 @@ export default function App() {
                   <span>Painel Administrativo</span>
                 </button>
               )}
-
-              {/* Botão de Diagnóstico e Testes Supabase (Aba Temporária) */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (view === 'admin' && authUser) {
-                    setAdminTab('debug');
-                  } else {
-                    setIsDebugModalOpen(true);
-                  }
-                }}
-                title="Diagnóstico em tempo real: Variáveis de ambiente e conexão ao Supabase"
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-900 border border-amber-300 transition-all cursor-pointer shadow-xs"
-              >
-                <Terminal className="w-3.5 h-3.5 text-amber-700" />
-                <span className="hidden md:inline">Diagnóstico / Debug</span>
-                <span className="text-[10px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded-md uppercase">
-                  Temporário
-                </span>
-              </button>
             </div>
 
             {/* User Chip & Logout OR Admin Access Button */}
@@ -2993,15 +2973,6 @@ export default function App() {
                 </button>
 
                 <div className="pt-2 flex flex-col items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsDebugModalOpen(true)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <Terminal className="w-4 h-4 text-amber-600" />
-                    <span>Testar Variáveis & Conexão Supabase (Debug)</span>
-                    <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-extrabold uppercase">Aba Temporária</span>
-                  </button>
 
                   <button
                     type="button"
