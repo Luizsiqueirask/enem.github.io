@@ -157,35 +157,17 @@ USING (true)
 WITH CHECK (true);
 
 -- ==============================================================================
--- 6. DADOS INICIAIS (SEED DATA)
--- Inserção das Vagas Oficiais e Chaves de Acesso Iniciais
+-- ==============================================================================
+-- 6. LIMPEZA DE DADOS FAKES E DE TESTE
+-- Garante banco de dados 100% limpo, sem vagas ou dados de exemplo
 -- ==============================================================================
 
--- Inserir Vagas Padrão da Região Metropolitana
-INSERT INTO public.vacancies (id, title, value, city, neighborhood, school, coordinator, coordination_number, quantity, min_age, max_age, status)
-VALUES
-  (1, 'Chefe de Sala', 120.00, 'Rio de Janeiro', 'Copacabana', 'Colégio Estadual Prado Júnior', 'Carlos Silva', '101', 5, 18, 70, 'open'),
-  (2, 'Fiscal de Informática', 120.00, 'Niterói', 'Icaraí', 'Colégio Estadual Aurelino Leal', 'Carlos Silva', '101', 2, 18, 65, 'open'),
-  (3, 'Fiscal Aplicador', 90.00, 'São Gonçalo', 'Alcântara', 'CIEP 045 - Darcy Ribeiro', 'Ana Antunes', '102', 15, 18, 75, 'open'),
-  (4, 'Fiscal Volante', 90.00, 'Duque de Caxias', 'Centro', 'Colégio Estadual Duque de Caxias', 'Ana Antunes', '102', 8, 18, 75, 'open'),
-  (5, 'Fiscal de Banheiro', 90.00, 'Nova Iguaçu', 'Centro', 'Instituto de Educação Rangel Pestana', 'Roberto Gomes', '103', 4, 18, 60, 'open'),
-  (6, 'Fiscal Ledor', 180.00, 'Belford Roxo', 'Areia Branca', 'Colégio Estadual Santa Maria', 'Juliana Lima', '104', 3, 18, 70, 'open'),
-  (7, 'Fiscal Ledor Inglês', 180.00, 'Maricá', 'Itapeba', 'Colégio Estadual Elisiário Matta', 'Juliana Lima', '104', 2, 18, 70, 'open'),
-  (8, 'Fiscal Ledor Espanhol', 180.00, 'Rio de Janeiro', 'Botafogo', 'Escola Municipal Deodoro', 'Juliana Lima', '104', 2, 18, 70, 'open'),
-  (9, 'Fiscal Intérprete Libras', 230.00, 'Niterói', 'Centro', 'Liceu Nilo Peçanha', 'Marcos Souza', '105', 2, 18, 65, 'open')
-ON CONFLICT (id) DO NOTHING;
+DELETE FROM public.vacancies WHERE id IN (1, 2, 3, 4, 5, 6, 7, 8, 9) OR coordinator IN ('Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza');
+DELETE FROM public.access_tokens WHERE token IN ('TOKEN-ENEM2026-ADMIN-MASTER', 'TOKEN-COORD-RJ-2026', 'TOKEN-COORD-NIT-2026', 'TOKEN-GESTAO-BAIXADA-2026');
+DELETE FROM public.coordinations WHERE coordination_number IN ('101', '102', '103', '104', '105', '00001', '00002');
 
--- Ajustar a sequência do ID da tabela vacancies
+-- Ajustar a sequência do ID da tabela vacancies para novos cadastros reais
 SELECT setval('vacancies_id_seq', (SELECT COALESCE(MAX(id), 1) FROM public.vacancies));
-
--- Inserir Chaves de Acesso Padrão ao Sistema
-INSERT INTO public.access_tokens (token, label, role, is_active)
-VALUES
-  ('TOKEN-ENEM2026-ADMIN-MASTER', 'Chave Mestra Geral - Coordenação Geral', 'admin', true),
-  ('TOKEN-COORD-RJ-2026', 'Coordenação 101 - Rio de Janeiro / Copacabana', 'coordenador', true),
-  ('TOKEN-COORD-NIT-2026', 'Coordenação 105 - Niterói', 'coordenador', true),
-  ('TOKEN-GESTAO-BAIXADA-2026', 'Gestão Baixada Fluminense (Caxias / Nova Iguaçu)', 'gestor', true)
-ON CONFLICT (token) DO NOTHING;
 
 -- ==============================================================================
 -- 7. VIEWS ÚTEIS PARA DASHBOARDS E RELATÓRIOS

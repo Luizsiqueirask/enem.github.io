@@ -32,6 +32,7 @@ import {
   saveUserAccount,
   deleteUserAccount,
   getDatabaseAndCacheStats,
+  purgeFakeDataFromServer,
   SUPABASE_SQL_SCHEMA,
   DEFAULT_VACANCIES,
   type UserAccount
@@ -506,6 +507,21 @@ app.use(express.json());
       return res.json({ id: newVacancy.id });
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Limpar e expurgar dados fakes/de teste
+  app.post("/api/admin/purge-fakes", requireSupabaseAuth, async (req, res) => {
+    try {
+      const result = await purgeFakeDataFromServer();
+      const broadcast = app.get("wss_broadcast");
+      if (broadcast) {
+        broadcast({ type: "vacancy_updated" });
+        broadcast({ type: "coordination_updated" });
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || "Erro ao purgar dados fakes." });
     }
   });
 

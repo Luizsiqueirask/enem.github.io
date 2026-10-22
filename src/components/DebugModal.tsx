@@ -20,7 +20,8 @@ import {
 import { 
   getSupabaseClient, 
   getSupabaseCredentials, 
-  testSupabaseConnection 
+  testSupabaseConnection,
+  purgeFakeDataFromSupabase
 } from '../lib/supabase.ts';
 
 interface DebugModalProps {
@@ -69,6 +70,22 @@ export function DebugModal({ isOpen = true, onClose, isEmbedded = false }: Debug
   const [showPassword, setShowPassword] = useState(false);
   const [authTestResult, setAuthTestResult] = useState<any>(null);
   const [isTestingAuth, setIsTestingAuth] = useState(false);
+  const [isPurgingData, setIsPurgingData] = useState(false);
+  const [purgeMessage, setPurgeMessage] = useState<string | null>(null);
+
+  const handlePurgeFakeData = async () => {
+    setIsPurgingData(true);
+    setPurgeMessage(null);
+    try {
+      const res = await purgeFakeDataFromSupabase();
+      setPurgeMessage(res.message);
+      await testTablesDirectly();
+    } catch (err: any) {
+      setPurgeMessage(`Erro: ${err?.message || 'Falha ao expurgar dados'}`);
+    } finally {
+      setIsPurgingData(false);
+    }
+  };
 
   const runAllTests = async () => {
     setIsLoading(true);
@@ -676,20 +693,36 @@ export function DebugModal({ isOpen = true, onClose, isEmbedded = false }: Debug
           {/* TAB 3: TABELAS DO BANCO DE DADOS */}
           {activeTab === 'database' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h4 className="font-bold text-slate-900 text-sm">Acesso Direto às Tabelas do Supabase</h4>
                   <p className="text-xs text-slate-500">
                     O teste é executado com uma consulta <code className="bg-slate-100 px-1 rounded">HEAD count</code> diretamente para o seu banco:
                   </p>
                 </div>
-                <button
-                  onClick={testTablesDirectly}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer"
-                >
-                  Testar Novamente
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={testTablesDirectly}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer"
+                  >
+                    Testar Novamente
+                  </button>
+                  <button
+                    onClick={handlePurgeFakeData}
+                    disabled={isPurgingData}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white text-xs font-bold rounded-lg cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    title="Exclui do Supabase todas as vagas fakes 1 a 9 e dados de teste"
+                  >
+                    {isPurgingData ? 'Expurgando...' : 'Expurgar Dados Fakes do Banco'}
+                  </button>
+                </div>
               </div>
+
+              {purgeMessage && (
+                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+                  {purgeMessage}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Tabela Vacancies */}

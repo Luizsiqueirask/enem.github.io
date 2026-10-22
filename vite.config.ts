@@ -42,7 +42,6 @@ export default defineConfig(({mode}) => {
     envPrefix: ['VITE_', 'NEXT_PUBLIC_', 'SUPABASE_'],
     plugins: [react(), tailwindcss()],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || ''),
       'process.env.SUPABASE_URL': JSON.stringify(supabaseUrl),
       'process.env.NEXT_PUBLIC_SUPABASE_URL': JSON.stringify(supabaseUrl),
       'process.env.VITE_SUPABASE_URL': JSON.stringify(supabaseUrl),

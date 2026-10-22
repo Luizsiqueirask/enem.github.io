@@ -225,6 +225,12 @@ export async function verifyAccessTokenInSupabase(tokenInput: string): Promise<{
   }
 }
 
+// Constantes de identificação de dados de teste / sementes iniciais para expurgação completa
+export const FAKE_VACANCY_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+export const FAKE_COORDINATOR_NAMES = ['Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza'];
+export const FAKE_COORD_NUMBERS = ['101', '102', '103', '104', '105', '00001', '00002'];
+export const FAKE_TOKENS = ['TOKEN-ENEM2026-ADMIN-MASTER', 'TOKEN-COORD-RJ-2026', 'TOKEN-COORD-NIT-2026', 'TOKEN-GESTAO-BAIXADA-2026'];
+
 export async function getAccessTokensFromSupabase(): Promise<AccessToken[]> {
   const client = getSupabaseClient();
   if (!client) return [];
@@ -238,7 +244,7 @@ export async function getAccessTokensFromSupabase(): Promise<AccessToken[]> {
     console.error('Erro ao buscar tokens do Supabase:', error);
     return [];
   }
-  return data as AccessToken[];
+  return ((data || []) as AccessToken[]).filter(t => !FAKE_TOKENS.includes(t.token));
 }
 
 export async function createAccessTokenInSupabase(token: string, label: string, role: string): Promise<{ success: boolean; error?: string }> {
@@ -291,7 +297,14 @@ export async function getVacanciesFromSupabase(): Promise<Vacancy[]> {
     console.error('Erro ao buscar vagas do Supabase:', error);
     return [];
   }
-  return data as Vacancy[];
+  
+  const rawList = (data || []) as Vacancy[];
+  // Filtra dados fakes / sementes de exemplo para nunca exibir na aplicação
+  return rawList.filter(v => 
+    !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
+    !FAKE_COORDINATOR_NAMES.includes(v.coordinator) &&
+    !FAKE_COORD_NUMBERS.includes(v.coordination_number)
+  );
 }
 
 export async function createVacancyInSupabase(vacancy: Omit<Vacancy, 'id' | 'created_at'>): Promise<{ success: boolean; id?: number; error?: string }> {
@@ -425,48 +438,233 @@ export async function getApplicationsFromSupabase(): Promise<Application[]> {
   const client = getSupabaseClient();
   if (!client) return [];
 
-  const { data, error } = await client
-    .from('applications')
-    .select(`
-      *,
-      vacancies (
-        title,
-        school,
-        city,
-        neighborhood,
-        coordination_number,
-        coordinator
-      )
-    `)
-    .order('applied_at', { ascending: false });
+  for (const tbl of ['contributors', 'contributor', 'applications']) {
+    try {
+      const { data, error } = await client
+        .from(tbl)
+        .select(`
+          *,
+          vacancies (
+            title,
+            school,
+            city,
+            neighborhood,
+            coordination_number,
+            coordinator
+          )
+        `)
+        .order('applied_at', { ascending: false });
 
-  if (error) {
-    console.error('Erro ao buscar colaboradores do Supabase:', error);
-    return [];
+      if (!error && Array.isArray(data)) {
+        return data
+          .filter((item: any) => !FAKE_VACANCY_IDS.includes(Number(item.vacancy_id)))
+          .map((item: any) => {
+            const v = item.vacancies;
+            return {
+              ...item,
+              vacancy_title: v?.title || item.vacancy_title || 'Vaga não especificada',
+              vacancy_school: v?.school || item.vacancy_school || '-',
+              vacancy_city: v?.city || item.vacancy_city || '-',
+              vacancy_neighborhood: v?.neighborhood || item.vacancy_neighborhood || '-',
+              coordination_number: v?.coordination_number || item.coordination_number || '-',
+              coordinator: v?.coordinator || item.coordinator || '-'
+            };
+          });
+      }
+    } catch {}
   }
 
-  return (data || []).map((item: any) => {
-    const v = item.vacancies;
-    return {
-      ...item,
-      vacancy_title: v?.title || 'Vaga não especificada',
-      vacancy_school: v?.school || '-',
-      vacancy_city: v?.city || '-',
-      vacancy_neighborhood: v?.neighborhood || '-',
-      coordination_number: v?.coordination_number || '-',
-      coordinator: v?.coordinator || '-'
-    };
-  });
+  return [];
 }
 
 export async function updateApplicationStatusInSupabase(id: number, status: 'pending' | 'cadastrado' | 'recusado'): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client) return false;
 
-  const { error } = await client
-    .from('applications')
-    .update({ status })
-    .eq('id', id);
+  for (const tbl of ['contributors', 'contributor', 'applications']) {
+    const { error } = await client
+      .from(tbl)
+      .update({ status })
+      .eq('id', id);
 
-  return !error;
+    if (!error) return true;
+  }
+  return false;
 }
+
+// -----------------------------------------------------------------------------
+// Operações Diretas de Coordenações e Usuários no Supabase (Navegador)
+// -----------------------------------------------------------------------------
+
+export async function getCoordinationsFromSupabase(): Promise<any[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+
+  const { data, error } = await client
+    .from('coordinations')
+    .select('*')
+    .order('coordination_number', { ascending: true });
+
+  if (error) {
+    console.warn('Erro ao buscar coordenações do Supabase:', error.message);
+    return [];
+  }
+  const rawList = data || [];
+  // Exclui coordenações fictícias de teste ('101'..'105', 'Carlos Silva', etc.)
+  return rawList.filter(c => 
+    !FAKE_COORD_NUMBERS.includes(c.coordination_number) &&
+    !FAKE_COORDINATOR_NAMES.includes(c.coordinator_name)
+  );
+}
+
+export async function saveCoordinationInSupabase(coord: {
+  coordination_number: string;
+  name: string;
+  coordinator_name: string;
+  coordinator_email: string;
+  assistant_email: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Supabase não conectado' };
+
+  const { error } = await client
+    .from('coordinations')
+    .upsert(coord, { onConflict: 'coordination_number' });
+
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+export async function getUserProfilesFromSupabase(): Promise<any[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+
+  const { data, error } = await client
+    .from('user_profiles')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.warn('Erro ao buscar perfis de usuário do Supabase:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+export async function saveUserProfileInSupabase(profile: any): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Supabase não conectado' };
+
+  const { error } = await client
+    .from('user_profiles')
+    .upsert(profile, { onConflict: 'email' });
+
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+// -----------------------------------------------------------------------------
+// Expurgador e Limpador de Dados Fakes no Supabase
+// -----------------------------------------------------------------------------
+
+export async function purgeFakeDataFromSupabase(): Promise<{
+  success: boolean;
+  purgedVacanciesCount: number;
+  message: string;
+}> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { success: false, purgedVacanciesCount: 0, message: 'Supabase não conectado.' };
+  }
+
+  let purgedCount = 0;
+
+  try {
+    // 1. Exclui inscrições de teste primeiro para liberar constraints de chave estrangeira
+    for (const tbl of ['contributors', 'contributor', 'applications']) {
+      try {
+        await client.from(tbl).delete().in('vacancy_id', FAKE_VACANCY_IDS);
+      } catch {}
+    }
+
+    // 2. Exclui vagas com IDs fakes conhecidos (1..9)
+    try {
+      const { data: del1 } = await client
+        .from('vacancies')
+        .delete()
+        .in('id', FAKE_VACANCY_IDS)
+        .select('id');
+      if (del1) purgedCount += del1.length;
+    } catch {}
+
+    // 3. Exclui vagas vinculadas aos coordenadores de exemplo
+    try {
+      const { data: del2 } = await client
+        .from('vacancies')
+        .delete()
+        .in('coordinator', FAKE_COORDINATOR_NAMES)
+        .select('id');
+      if (del2) purgedCount += del2.length;
+    } catch {}
+
+    // 4. Exclui vagas vinculadas aos números de coordenação fake
+    try {
+      const { data: del3 } = await client
+        .from('vacancies')
+        .delete()
+        .in('coordination_number', FAKE_COORD_NUMBERS)
+        .select('id');
+      if (del3) purgedCount += del3.length;
+    } catch {}
+
+    // 5. Limpa tokens de teste do Supabase
+    try {
+      await client.from('access_tokens').delete().in('token', FAKE_TOKENS);
+    } catch {}
+
+    // 6. Limpa coordenações de teste
+    try {
+      await client.from('coordinations').delete().in('coordination_number', FAKE_COORD_NUMBERS);
+      await client.from('coordinations').delete().in('coordinator_name', FAKE_COORDINATOR_NAMES);
+    } catch {}
+
+    // 7. Limpa dados de cache no localStorage do navegador
+    if (typeof window !== 'undefined') {
+      try {
+        const storedVac = localStorage.getItem('enem_vacancies');
+        if (storedVac) {
+          const parsed = JSON.parse(storedVac);
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter((v: any) => 
+              !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
+              !FAKE_COORDINATOR_NAMES.includes(v.coordinator) &&
+              !FAKE_COORD_NUMBERS.includes(v.coordination_number)
+            );
+            localStorage.setItem('enem_vacancies', JSON.stringify(clean));
+          }
+        }
+        const storedCont = localStorage.getItem('enem_contributors');
+        if (storedCont) {
+          const parsedC = JSON.parse(storedCont);
+          if (Array.isArray(parsedC)) {
+            const cleanC = parsedC.filter((c: any) => !FAKE_VACANCY_IDS.includes(Number(c.vacancy_id)));
+            localStorage.setItem('enem_contributors', JSON.stringify(cleanC));
+          }
+        }
+      } catch {}
+    }
+
+    return {
+      success: true,
+      purgedVacanciesCount: purgedCount,
+      message: 'Todos os dados fakes e de teste foram removidos do Supabase!'
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      purgedVacanciesCount: purgedCount,
+      message: `Erro ao limpar dados do Supabase: ${err.message || 'Falha na requisição'}`
+    };
+  }
+}
+

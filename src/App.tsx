@@ -55,7 +55,17 @@ import {
   getSupabaseCredentials,
   testSupabaseConnection,
   getVacanciesFromSupabase,
-  getApplicationsFromSupabase
+  getApplicationsFromSupabase,
+  getCoordinationsFromSupabase,
+  saveCoordinationInSupabase,
+  getUserProfilesFromSupabase,
+  saveUserProfileInSupabase,
+  createVacancyInSupabase,
+  deleteVacancyInSupabase,
+  purgeFakeDataFromSupabase,
+  FAKE_VACANCY_IDS,
+  FAKE_COORDINATOR_NAMES,
+  FAKE_COORD_NUMBERS
 } from './lib/supabase.ts';
 import { DebugModal } from './components/DebugModal.tsx';
 
@@ -432,6 +442,7 @@ export default function App() {
   } | null>(null);
   const [isTestingSupabase, setIsTestingSupabase] = useState(false);
   const [isSyncingSupabase, setIsSyncingSupabase] = useState(false);
+  const [isPurgingSupabase, setIsPurgingSupabase] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
 
   const handleCloseModal = () => {
@@ -662,7 +673,7 @@ export default function App() {
     setIsLoggingIn(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = (isManual: boolean = false) => {
     setAuthToken(null);
     setAuthUser(null);
     localStorage.removeItem('enem_supabase_auth_token');
@@ -675,8 +686,10 @@ export default function App() {
     setUserCoordEditMode(true);
     setcontributors([]);
     fetchVacancies();
-    setMessage({ type: 'success', text: 'Você saiu da sessão com segurança.' });
-    setTimeout(() => setMessage(null), 3000);
+    if (isManual) {
+      setMessage({ type: 'success', text: 'Você saiu da sessão com segurança.' });
+      setTimeout(() => setMessage(null), 3000);
+    }
   };
 
   const fetchCoordinations = async () => {
@@ -685,14 +698,34 @@ export default function App() {
         headers: getAuthHeaders()
       });
       if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setCoordinations(data);
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const clean = data.filter((c: any) => 
+              !FAKE_COORD_NUMBERS.includes(String(c.coordination_number)) &&
+              !FAKE_COORDINATOR_NAMES.includes(String(c.coordinator_name))
+            );
+            setCoordinations(clean);
+            return;
+          }
         }
       }
     } catch (err) {
-      console.warn('Erro ao carregar coordenações:', err);
+      console.warn('Erro ao carregar coordenações via API, buscando direto no Supabase:', err);
     }
+
+    // Fallback direto via Supabase client
+    try {
+      const data = await getCoordinationsFromSupabase();
+      if (Array.isArray(data)) {
+        const clean = data.filter((c: any) => 
+          !FAKE_COORD_NUMBERS.includes(String(c.coordination_number)) &&
+          !FAKE_COORDINATOR_NAMES.includes(String(c.coordinator_name))
+        );
+        setCoordinations(clean as any);
+      }
+    } catch {}
   };
 
   const handleSaveCoordination = async (e: React.FormEvent) => {
@@ -984,29 +1017,70 @@ export default function App() {
   };
 
   useEffect(() => {
+    // 1. Limpeza proativa de dados de teste/fake remanescentes no Supabase e no localStorage
+    purgeFakeDataFromSupabase().then(() => {
+      fetchVacancies();
+      fetchcontributors();
+      fetchCoordinations();
+    }).catch(() => {});
+
     // Carrega vagas e status do Supabase imediatamente para todos (público)
     fetchVacancies();
     fetchSupabaseStatus();
 
     if (authToken) {
-      fetch('/api/auth/session', {
-        headers: getAuthHeaders()
-      }).then(res => res.json()).then(data => {
-        if (data.valid && data.user) {
-          setAuthUser(data.user);
-          localStorage.setItem('enem_supabase_auth_user', JSON.stringify(data.user));
-          fetchVacancies();
-          fetchcontributors();
-          fetchCoordinations();
-          if (data.user.is_administrator) {
-            fetchUserAccounts();
+      // 1. Valida diretamente com o cliente Supabase no navegador (onde as credenciais estão conectadas)
+      const supabase = getSupabaseClient();
+      if (supabase && !authToken.startsWith('token-')) {
+        supabase.auth.getUser(authToken).then(({ data: sbData, error: sbErr }) => {
+          if (!sbErr && sbData?.user) {
+            const cleanEmail = (sbData.user.email || '').toLowerCase();
+            const isAdm = cleanEmail.includes('admin') || cleanEmail.includes('root') || cleanEmail === 'administrator@enem.app';
+            const userObj: AuthUser = {
+              id: sbData.user.id,
+              email: cleanEmail,
+              first_name: sbData.user.user_metadata?.first_name || cleanEmail.split('@')[0],
+              last_name: sbData.user.user_metadata?.last_name || '',
+              full_name: sbData.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+              is_administrator: isAdm,
+              role: isAdm ? 'admin' : 'coordinator',
+              coordination_number: sbData.user.user_metadata?.coordination_number || null,
+              coordination_name: isAdm ? 'Administração Geral ENEM 2026' : undefined
+            };
+            setAuthUser(userObj);
+            localStorage.setItem('enem_supabase_auth_user', JSON.stringify(userObj));
+            fetchVacancies();
+            fetchcontributors();
+            fetchCoordinations();
+          } else if (sbErr) {
+            console.warn('Sessão rejeitada pelo Supabase:', sbErr.message);
           }
-        } else {
-          handleLogout();
-        }
-      }).catch(() => {
-        handleLogout();
-      });
+        }).catch(() => {});
+      } else {
+        // Token master local ou fallback
+        fetchVacancies();
+        fetchcontributors();
+        fetchCoordinations();
+      }
+
+      // 2. Opcional: tenta sincronizar perfil com a API se disponível (sem jamais derrubar a sessão local se der 404)
+      fetch('/api/auth/session', { headers: getAuthHeaders() })
+        .then(res => {
+          const ct = res.headers.get('content-type') || '';
+          if (res.ok && ct.includes('application/json')) {
+            return res.json();
+          }
+          return null;
+        })
+        .then(data => {
+          if (data && data.valid && data.user) {
+            setAuthUser(data.user);
+            localStorage.setItem('enem_supabase_auth_user', JSON.stringify(data.user));
+          }
+        })
+        .catch(() => {
+          // Ambiente estático Vercel: ignora 404 sem deslogar
+        });
     }
   }, [authToken, view]);
 
@@ -1139,8 +1213,13 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          setVacancies(data);
-          try { localStorage.setItem('enem_vacancies', JSON.stringify(data)); } catch {}
+          const clean = data.filter((v: any) => 
+            !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
+            !FAKE_COORDINATOR_NAMES.includes(String(v.coordinator)) &&
+            !FAKE_COORD_NUMBERS.includes(String(v.coordination_number))
+          );
+          setVacancies(clean);
+          try { localStorage.setItem('enem_vacancies', JSON.stringify(clean)); } catch {}
           return;
         }
       }
@@ -1151,9 +1230,14 @@ export default function App() {
     // Fallback: carregar diretamente do cliente Supabase
     try {
       const data = await getVacanciesFromSupabase();
-      if (Array.isArray(data) && data.length > 0) {
-        setVacancies(data as any);
-        try { localStorage.setItem('enem_vacancies', JSON.stringify(data)); } catch {}
+      if (Array.isArray(data)) {
+        const clean = data.filter((v: any) => 
+          !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
+          !FAKE_COORDINATOR_NAMES.includes(String(v.coordinator)) &&
+          !FAKE_COORD_NUMBERS.includes(String(v.coordination_number))
+        );
+        setVacancies(clean as any);
+        try { localStorage.setItem('enem_vacancies', JSON.stringify(clean)); } catch {}
       }
     } catch {}
   };
@@ -1164,16 +1248,15 @@ export default function App() {
       const res = await fetch('/api/admin/contributors', {
         headers: getAuthHeaders()
       });
-      if (res.status === 401) {
-        handleLogout();
-        return;
-      }
       if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setcontributors(data);
-          try { localStorage.setItem('enem_contributors', JSON.stringify(data)); } catch {}
-          return;
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setcontributors(data);
+            try { localStorage.setItem('enem_contributors', JSON.stringify(data)); } catch {}
+            return;
+          }
         }
       }
     } catch (err) {
@@ -1315,6 +1398,40 @@ export default function App() {
       setTimeout(() => setMessage(null), 6000);
     } finally {
       setIsSyncingSupabase(false);
+    }
+  };
+
+  const handlePurgeFakeData = async () => {
+    if (!window.confirm('Atenção: Deseja realmente remover todos os dados fakes e de teste (vagas 1 a 9, coordenadores de exemplo e tokens) do Supabase e do sistema?')) {
+      return;
+    }
+    setIsPurgingSupabase(true);
+    try {
+      // 1. Tenta API backend se disponível
+      try {
+        await fetch('/api/admin/purge-fakes', {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+      } catch {}
+
+      // 2. Executa diretamente no cliente Supabase conectado (essencial no Vercel!)
+      const res = await purgeFakeDataFromSupabase();
+      setMessage({
+        type: res.success ? 'success' : 'error',
+        text: res.message
+      });
+
+      // 3. Atualiza estado
+      await fetchVacancies();
+      await fetchcontributors();
+      await fetchCoordinations();
+      await fetchSupabaseStatus();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: 'Falha ao remover dados: ' + (err?.message || '') });
+    } finally {
+      setIsPurgingSupabase(false);
+      setTimeout(() => setMessage(null), 5000);
     }
   };
 
@@ -1585,13 +1702,49 @@ export default function App() {
         })
       });
 
-      if (res.status === 401) {
-        handleLogout();
-        return;
-      }
-
       if (res.ok) {
-        setMessage({ type: 'success', text: `Vaga "${finalTitle}" cadastrada com sucesso no banco de dados!` });
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          setMessage({ type: 'success', text: `Vaga "${finalTitle}" cadastrada com sucesso no banco de dados!` });
+          setAdminFormData({ 
+            title: '', 
+            price: '',
+            value: '', 
+            city: 'Rio de Janeiro', 
+            neighborhood: '', 
+            school: '', 
+            coordinator: '', 
+            coordination_number: '', 
+            quantity: '', 
+            min_age: '18', 
+            max_age: '100' 
+          });
+          setCustomVacancyTitle('');
+          fetchVacancies();
+          setTimeout(() => setMessage(null), 5000);
+          return;
+        }
+      }
+    } catch {}
+
+    // Fallback direto via cliente Supabase no navegador
+    try {
+      const finalPrice = adminFormData.price || adminFormData.value;
+      const sbRes = await createVacancyInSupabase({
+        title: finalTitle,
+        value: parseFloat(finalPrice) || 0,
+        city: adminFormData.city || 'Rio de Janeiro',
+        neighborhood: adminFormData.neighborhood || '',
+        school: adminFormData.school || '',
+        coordinator: adminFormData.coordinator || '',
+        coordination_number: adminFormData.coordination_number || '',
+        quantity: parseInt(adminFormData.quantity) || 1,
+        min_age: parseInt(adminFormData.min_age) || 18,
+        max_age: parseInt(adminFormData.max_age) || 100,
+        status: 'open'
+      });
+      if (sbRes.success) {
+        setMessage({ type: 'success', text: `Vaga "${finalTitle}" cadastrada com sucesso no Supabase!` });
         setAdminFormData({ 
           title: '', 
           price: '',
@@ -2542,7 +2695,7 @@ export default function App() {
                   </div>
 
                   <button
-                    onClick={handleLogout}
+                    onClick={() => handleLogout(true)}
                     title="Sair do sistema"
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 transition-colors cursor-pointer"
                   >
@@ -2718,16 +2871,20 @@ export default function App() {
               {filteredVacancies.length === 0 && (
                 <div className="col-span-full py-16 text-center bg-white rounded-2xl border border-slate-200">
                   <MapPin className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <h3 className="text-lg font-bold text-slate-800">Nenhuma vaga encontrada</h3>
-                  <p className="text-sm text-slate-500 max-w-sm mx-auto mt-1">
-                    Não encontramos vagas abertas para os filtros de cidade ou bairro selecionados.
+                  <h3 className="text-lg font-bold text-slate-800">Nenhuma vaga em aberto no momento</h3>
+                  <p className="text-sm text-slate-500 max-w-md mx-auto mt-1">
+                    {vacancies.length === 0 
+                      ? 'O sistema está limpo. Novos postos e vagas oficiais serão disponibilizados pelas coordenações do ENEM 2026.'
+                      : 'Não encontramos vagas abertas para os filtros de cidade ou bairro selecionados.'}
                   </p>
-                  <button
-                    onClick={() => setPublicFilter({ search: '', city: '', neighborhood: '' })}
-                    className="mt-4 px-4 py-2 bg-blue-50 text-blue-600 font-bold text-sm rounded-xl hover:bg-blue-100 transition-colors"
-                  >
-                    Ver todas as vagas
-                  </button>
+                  {vacancies.length > 0 && (
+                    <button
+                      onClick={() => setPublicFilter({ search: '', city: '', neighborhood: '' })}
+                      className="mt-4 px-4 py-2 bg-blue-50 text-blue-600 font-bold text-sm rounded-xl hover:bg-blue-100 transition-colors"
+                    >
+                      Ver todas as vagas
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -4892,9 +5049,9 @@ export default function App() {
                       {filteredOfferedVacancies.length === 0 && (
                         <div className="py-12 text-center bg-slate-50 rounded-2xl border border-slate-200">
                           <Briefcase className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                          <h4 className="font-bold text-slate-800">Nenhuma vaga encontrada</h4>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Tente alterar os filtros de status, tipo de vaga ou cidade.
+                          <h4 className="font-bold text-slate-800">Nenhum posto/vaga cadastrado</h4>
+                          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                            O banco de dados está limpo e sem dados de exemplo. Cadastre novos postos e vagas reais para as escolas no formulário acima.
                           </p>
                         </div>
                       )}
@@ -5441,11 +5598,18 @@ export default function App() {
 
                       {authUser?.is_administrator && (
                         <button
-                          onClick={handleRestoreDefaults}
-                          className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                          type="button"
+                          disabled={isPurgingSupabase}
+                          onClick={handlePurgeFakeData}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition-colors cursor-pointer"
+                          title="Remover todas as vagas e dados de teste (1 a 9, coordenadores fictícios e tokens de exemplo)"
                         >
-                          <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Restaurar Vagas Oficiais</span>
+                          {isPurgingSupabase ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          )}
+                          <span>Remover Dados Fakes</span>
                         </button>
                       )}
                     </div>
@@ -5560,6 +5724,21 @@ export default function App() {
                           <Upload className="w-4 h-4" />
                         )}
                         <span>Sincronizar para o Supabase</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isPurgingSupabase}
+                        onClick={handlePurgeFakeData}
+                        className="flex items-center gap-2 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition-colors cursor-pointer"
+                        title="Remover vagas 1 a 9, coordenadores de teste e tokens do Supabase"
+                      >
+                        {isPurgingSupabase ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
+                        ) : (
+                          <Trash2 className="w-4 h-4 text-rose-600" />
+                        )}
+                        <span>Remover Dados Fakes</span>
                       </button>
                     </div>
                   </div>

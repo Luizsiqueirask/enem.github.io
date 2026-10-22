@@ -77,25 +77,8 @@ export interface UserAccount {
   updated_at?: string;
 }
 
-// Coordenações Oficiais Padrão do ENEM 2026
-// Cada coordenação é identificada pelo seu número (coordination_number)
-// e possui no máximo DOIS e-mails que podem acompanhá-la: coordenador e assistente.
-export const DEFAULT_COORDINATIONS: Coordination[] = [
-  {
-    coordination_number: "00001",
-    name: "Super User Root",
-    coordinator_name: "Root",
-    coordinator_email: "root@enem.app",
-    assistant_email: "root@enem.app"
-  },
-  {
-    coordination_number: "00002",
-    name: "Super User Admin",
-    coordinator_name: "Administrator",
-    coordinator_email: "administrator@enem.app",
-    assistant_email: "administrator@enem.app"
-  }
-];
+// Coordenações Oficiais Padrão do ENEM 2026 (inicia vazio para não exibir dados fakes)
+export const DEFAULT_COORDINATIONS: Coordination[] = [];
 
 // Vagas padrão iniciam vazias para que apenas vagas reais cadastradas permaneçam
 export const DEFAULT_VACANCIES: Array<Omit<Vacancy, "id"> & { id: number; price: number }> = [];
@@ -109,36 +92,12 @@ export const SYSTEM_ADMIN_EMAILS = [
 // Armazenamento em memória (Redis Cache Engine Fallback)
 let memoryVacancies: Vacancy[] = [];
 let memoryApplications: Application[] = [];
-let memoryCoordinations: Coordination[] = [...DEFAULT_COORDINATIONS];
+let memoryCoordinations: Coordination[] = [];
 
-export const DEFAULT_USER_ACCOUNTS: UserAccount[] = [
-  {
-    id: "usr-root",
-    email: "root@enem.app",
-    first_name: "Root",
-    last_name: "Administrador",
-    full_name: "Root Geral",
-    is_administrator: true,
-    role: "admin",
-    coordination_number: null,
-    coordination_name: "Super User",
-    created_at: "2026-03-01T08:00:00.000Z"
-  },
-  {
-    id: "usr-admin",
-    email: "administrator@enem.app",
-    first_name: "Administrator",
-    last_name: "Geral",
-    full_name: "Administrator Geral",
-    is_administrator: true,
-    role: "admin",
-    coordination_number: null,
-    coordination_name: "Administrator",
-    created_at: "2026-03-01T08:00:00.000Z"
-  }
-];
+// Contas de usuários padrão (inicia vazio para não exibir contas de teste)
+export const DEFAULT_USER_ACCOUNTS: UserAccount[] = [];
 
-let memoryUserAccounts: UserAccount[] = [...DEFAULT_USER_ACCOUNTS];
+let memoryUserAccounts: UserAccount[] = [];
 let memoryAdminUsers: Map<string, { is_administrator: boolean; coordination_number?: string | null }> = new Map([
   ["root@enem.app", { is_administrator: true, coordination_number: null }],
   ["administrator@enem.app", { is_administrator: true, coordination_number: null }]
@@ -675,9 +634,12 @@ export async function resolveUserProfile(email: string): Promise<UserProfile | n
 // COORDENAÇÕES (Coordination Number, Name, Coordinator Email, Assistant Email)
 // -----------------------------------------------------------------------------
 export async function getCoordinations(): Promise<Coordination[]> {
+  const fakeNums = ['101', '102', '103', '104', '105', '00001', '00002'];
+  const fakeCoords = ['Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza'];
+
   const cached = await cache.get<Coordination[]>("enem_coordinations");
   if (cached && cached.length > 0) {
-    return cached;
+    return cached.filter(c => !fakeNums.includes(String(c.coordination_number)) && !fakeCoords.includes(String(c.coordinator_name)));
   }
 
   const client = getSupabaseClient();
@@ -689,16 +651,24 @@ export async function getCoordinations(): Promise<Coordination[]> {
         .order("coordination_number", { ascending: true });
 
       if (!error && data && data.length > 0) {
-        await cache.set("enem_coordinations", data, 600);
-        return data as Coordination[];
+        const cleanList = (data as Coordination[]).filter(c => 
+          !fakeNums.includes(String(c.coordination_number)) && 
+          !fakeCoords.includes(String(c.coordinator_name))
+        );
+        await cache.set("enem_coordinations", cleanList, 600);
+        return cleanList;
       }
     } catch (err) {
       console.warn("[Supabase] Aviso ao buscar coordenações:", err);
     }
   }
 
-  await cache.set("enem_coordinations", memoryCoordinations, 600);
-  return memoryCoordinations;
+  const cleanMemory = memoryCoordinations.filter(c => 
+    !fakeNums.includes(String(c.coordination_number)) && 
+    !fakeCoords.includes(String(c.coordinator_name))
+  );
+  await cache.set("enem_coordinations", cleanMemory, 600);
+  return cleanMemory;
 }
 
 export async function saveCoordination(coord: Coordination): Promise<Coordination> {
@@ -868,10 +838,20 @@ export async function bindUserToCoordination(
 // -----------------------------------------------------------------------------
 // VAGAS (Vacancies) COM CACHE REDIS / MEMÓRIA
 // -----------------------------------------------------------------------------
+const FAKE_VACANCY_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const FAKE_COORDINATOR_NAMES = ['Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza'];
+const FAKE_COORD_NUMBERS = ['101', '102', '103', '104', '105', '00001', '00002'];
+const FAKE_TOKENS = ['TOKEN-ENEM2026-ADMIN-MASTER', 'TOKEN-COORD-RJ-2026', 'TOKEN-COORD-NIT-2026', 'TOKEN-GESTAO-BAIXADA-2026'];
+
 export async function getVacancies(): Promise<Vacancy[]> {
   const cached = await cache.get<Vacancy[]>("enem_vacancies");
   if (cached && cached.length > 0) {
-    return cached.filter(v => !memoryDeletedVacancyIds.has(String(v.id)));
+    return cached.filter(v => 
+      !memoryDeletedVacancyIds.has(String(v.id)) &&
+      !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
+      !FAKE_COORDINATOR_NAMES.includes(String(v.coordinator)) &&
+      !FAKE_COORD_NUMBERS.includes(String(v.coordination_number))
+    );
   }
 
   const client = getSupabaseClient();
@@ -884,7 +864,12 @@ export async function getVacancies(): Promise<Vacancy[]> {
 
       if (!error && data && data.length > 0) {
         const mapped = data
-          .filter(v => !memoryDeletedVacancyIds.has(String(v.id)))
+          .filter(v => 
+            !memoryDeletedVacancyIds.has(String(v.id)) &&
+            !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
+            !FAKE_COORDINATOR_NAMES.includes(String(v.coordinator)) &&
+            !FAKE_COORD_NUMBERS.includes(String(v.coordination_number))
+          )
           .map(v => {
             const p = Number(v.price ?? v.value ?? 0);
             let defaultTitle = "Fiscal Colaborador(a) ENEM 2026";
@@ -910,9 +895,63 @@ export async function getVacancies(): Promise<Vacancy[]> {
     }
   }
 
-  const nonDeletedVacancies = memoryVacancies.filter(v => !memoryDeletedVacancyIds.has(String(v.id)));
+  const nonDeletedVacancies = memoryVacancies.filter(v => 
+    !memoryDeletedVacancyIds.has(String(v.id)) &&
+    !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
+    !FAKE_COORDINATOR_NAMES.includes(String(v.coordinator)) &&
+    !FAKE_COORD_NUMBERS.includes(String(v.coordination_number))
+  );
   await cache.set("enem_vacancies", nonDeletedVacancies, 300);
   return nonDeletedVacancies;
+}
+
+export async function purgeFakeDataFromServer(): Promise<{ success: boolean; count: number; message: string }> {
+  const client = getSupabaseClient();
+  let count = 0;
+  if (client) {
+    try {
+      for (const tbl of ['contributors', 'contributor', 'applications']) {
+        try { await client.from(tbl).delete().in('vacancy_id', FAKE_VACANCY_IDS); } catch {}
+      }
+      try {
+        const { data: d1 } = await client.from('vacancies').delete().in('id', FAKE_VACANCY_IDS).select('id');
+        if (d1) count += d1.length;
+      } catch {}
+      try {
+        const { data: d2 } = await client.from('vacancies').delete().in('coordinator', FAKE_COORDINATOR_NAMES).select('id');
+        if (d2) count += d2.length;
+      } catch {}
+      try {
+        const { data: d3 } = await client.from('vacancies').delete().in('coordination_number', FAKE_COORD_NUMBERS).select('id');
+        if (d3) count += d3.length;
+      } catch {}
+      try { await client.from('access_tokens').delete().in('token', FAKE_TOKENS); } catch {}
+      try { await client.from('coordinations').delete().in('coordination_number', FAKE_COORD_NUMBERS); } catch {}
+      try { await client.from('coordinations').delete().in('coordinator_name', FAKE_COORDINATOR_NAMES); } catch {}
+    } catch (err: any) {
+      console.warn("Aviso ao purgar do Supabase:", err);
+    }
+  }
+
+  // Limpa da memória e do cache
+  for (let i = 1; i <= 9; i++) memoryDeletedVacancyIds.add(String(i));
+  memoryVacancies = memoryVacancies.filter(v => 
+    !FAKE_VACANCY_IDS.includes(Number(v.id)) &&
+    !FAKE_COORDINATOR_NAMES.includes(String(v.coordinator)) &&
+    !FAKE_COORD_NUMBERS.includes(String(v.coordination_number))
+  );
+  memoryCoordinations = memoryCoordinations.filter(c =>
+    !FAKE_COORD_NUMBERS.includes(String(c.coordination_number)) &&
+    !FAKE_COORDINATOR_NAMES.includes(String(c.coordinator_name))
+  );
+  await cache.del("enem_vacancies");
+  await cache.del("enem_coordinations");
+
+  return {
+    success: true,
+    count,
+    message: "Dados fakes e de teste removidos com sucesso."
+  };
 }
 
 export async function getVacancyById(id: string | number): Promise<Vacancy | null> {
@@ -1739,15 +1778,10 @@ CREATE POLICY "Public can view user accounts" ON public.user_accounts FOR SELECT
 DROP POLICY IF EXISTS "Manage user accounts" ON public.user_accounts;
 CREATE POLICY "Manage user accounts" ON public.user_accounts FOR ALL USING (true);
 
--- 9. CARGA DE COORDENAÇÕES PADRÃO (com os 2 e-mails permitidos por coordenação)
-INSERT INTO public.coordinations (coordination_number, name, coordinator_name, coordinator_email, assistant_email)
-VALUES
-  ('101', 'Coordenação Zona Sul & Copacabana', 'Carlos Silva', 'carlos.silva@enem2026.gov.br', 'assistente.101@enem2026.gov.br'),
-  ('102', 'Coordenação São Gonçalo & Caxias', 'Ana Antunes', 'ana.antunes@enem2026.gov.br', 'assistente.102@enem2026.gov.br'),
-  ('103', 'Coordenação Baixada Fluminense', 'Roberto Gomes', 'roberto.gomes@enem2026.gov.br', 'assistente.103@enem2026.gov.br'),
-  ('104', 'Coordenação Atendimento Especializado & Inclusão', 'Juliana Lima', 'juliana.lima@enem2026.gov.br', 'assistente.104@enem2026.gov.br'),
-  ('105', 'Unidade de ensino', 'Marcos Souza', 'marcos.souza@enem2026.gov.br', 'assistente.105@enem2026.gov.br')
-ON CONFLICT (coordination_number) DO NOTHING;
+-- 9. LIMPEZA TOTAL DE DADOS DE TESTE / FAKES
+DELETE FROM public.vacancies WHERE id IN (1, 2, 3, 4, 5, 6, 7, 8, 9) OR coordinator IN ('Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza') OR coordination_number IN ('101', '102', '103', '104', '105', '00001', '00002');
+DELETE FROM public.coordinations WHERE coordination_number IN ('101', '102', '103', '104', '105', '00001', '00002') OR coordinator_name IN ('Carlos Silva', 'Ana Antunes', 'Roberto Gomes', 'Juliana Lima', 'Marcos Souza');
+DELETE FROM public.access_tokens WHERE token IN ('TOKEN-ENEM2026-ADMIN-MASTER', 'TOKEN-COORD-RJ-2026', 'TOKEN-COORD-NIT-2026', 'TOKEN-GESTAO-BAIXADA-2026');
 
 -- 10. ADMINISTRADORES DO SISTEMA (Apenas root@enem.app e administrator@enem.app)
 INSERT INTO public.user_profiles (email, is_administrator, role_title)
