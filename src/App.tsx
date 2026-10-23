@@ -3007,17 +3007,7 @@ export default function App() {
                   )}
                 </button>
 
-                <div className="pt-2 flex flex-col items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsDebugModalOpen(true)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <Terminal className="w-4 h-4 text-amber-600" />
-                    <span>Testar Variáveis & Conexão Supabase (Debug)</span>
-                    <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-extrabold uppercase">Aba Temporária</span>
-                  </button>
-
+                <div className="pt-2 flex flex-col items-center">
                   <button
                     type="button"
                     onClick={() => setView('public')}

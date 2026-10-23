@@ -114,9 +114,51 @@ export function saveSupabaseCredentials(url: string, anonKey: string): void {
   supabaseInstance = null;
 }
 
+function createClientTimeoutFetch(timeoutMs = 1500) {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const controller = new AbortController();
+    let timeoutTimer: any;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutTimer = setTimeout(() => {
+        controller.abort();
+        reject(new Error(`Supabase timeout (${timeoutMs}ms)`));
+      }, timeoutMs);
+    });
+
+    try {
+      const response = await Promise.race([
+        fetch(input, {
+          ...init,
+          signal: controller.signal
+        }),
+        timeoutPromise
+      ]);
+      return response;
+    } finally {
+      clearTimeout(timeoutTimer);
+    }
+  };
+}
+
+let clientSupabaseOfflineUntil = 0;
+export let lastClientSupabaseError = '';
+
+export function markClientSupabaseOffline(errMsg: string) {
+  clientSupabaseOfflineUntil = Date.now() + 60000;
+  lastClientSupabaseError = errMsg;
+}
+
+export function isClientSupabaseOffline(): boolean {
+  return Date.now() < clientSupabaseOfflineUntil;
+}
+
 let supabaseInstance: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient | null {
+  if (isClientSupabaseOffline()) {
+    return null;
+  }
+
   if (supabaseInstance) return supabaseInstance;
 
   const { url, anonKey } = getSupabaseCredentials();
@@ -129,6 +171,9 @@ export function getSupabaseClient(): SupabaseClient | null {
       auth: {
         persistSession: false,
         autoRefreshToken: false
+      },
+      global: {
+        fetch: createClientTimeoutFetch(2500)
       }
     });
     return supabaseInstance;

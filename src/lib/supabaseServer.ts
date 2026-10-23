@@ -143,16 +143,72 @@ export function getSupabaseConfig() {
   };
 }
 
+function createTimeoutFetch(timeoutMs = 1500) {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const controller = new AbortController();
+    let timeoutTimer: any;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutTimer = setTimeout(() => {
+        controller.abort();
+        reject(new Error(`Supabase request timed out (${timeoutMs}ms)`));
+      }, timeoutMs);
+    });
+
+    try {
+      const response = await Promise.race([
+        fetch(input, {
+          ...init,
+          signal: controller.signal
+        }),
+        timeoutPromise
+      ]);
+      return response;
+    } finally {
+      clearTimeout(timeoutTimer);
+    }
+  };
+}
+
+export async function withQueryTimeout<T>(promise: PromiseLike<T>, timeoutMs = 2000, timeoutError: any = new Error(`Query timeout (${timeoutMs}ms)`)): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(timeoutError), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+let supabaseHostOfflineUntil = 0;
+export let lastSupabaseFailureMessage = "";
+
+export function markSupabaseOffline(errMsg: string) {
+  supabaseHostOfflineUntil = Date.now() + 60000; // 60 segundos de circuito aberto
+  lastSupabaseFailureMessage = errMsg;
+  console.warn(`[Supabase Circuit Breaker] Instância Supabase offline/inacessível: ${errMsg}. Modo local ativo por 60s.`);
+}
+
+export function isSupabaseCircuitOpen(): boolean {
+  return Date.now() < supabaseHostOfflineUntil;
+}
+
 export function getSupabaseClient(customUrl?: string, customKey?: string): SupabaseClient | null {
   if (customUrl && customKey) {
     try {
       return createClient(customUrl.trim(), customKey.trim(), {
-        auth: { persistSession: false }
+        auth: { persistSession: false },
+        global: { fetch: createTimeoutFetch(3000) }
       });
     } catch (err) {
       console.error("[Supabase] Failed to initialize client with custom keys:", err);
       return null;
     }
+  }
+
+  if (isSupabaseCircuitOpen()) {
+    return null;
   }
 
   if (activeClient) return activeClient;
@@ -162,7 +218,8 @@ export function getSupabaseClient(customUrl?: string, customKey?: string): Supab
 
   try {
     activeClient = createClient(url, key, {
-      auth: { persistSession: false }
+      auth: { persistSession: false },
+      global: { fetch: createTimeoutFetch(2500) }
     });
     console.log(`[Supabase] Conectado com sucesso à instância: ${url}`);
     return activeClient;
@@ -192,10 +249,13 @@ export async function getUserAccounts(): Promise<UserAccount[]> {
   const client = getSupabaseClient();
   if (client) {
     try {
-      const { data, error } = await client
-        .from("user_profiles")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const { data, error } = await withQueryTimeout(
+        client
+          .from("user_profiles")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        1500
+      );
 
       if (!error && data && data.length > 0) {
         const mapped: UserAccount[] = data
@@ -216,8 +276,9 @@ export async function getUserAccounts(): Promise<UserAccount[]> {
         await cache.set("enem_user_accounts", mapped, 600);
         return mapped;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn("[Supabase] Aviso ao buscar user_profiles:", err);
+      markSupabaseOffline(err?.message || "Falha ao buscar usuários no Supabase");
     }
   }
 
@@ -651,10 +712,13 @@ export async function getCoordinations(): Promise<Coordination[]> {
   const client = getSupabaseClient();
   if (client) {
     try {
-      const { data, error } = await client
-        .from("coordinations")
-        .select("*")
-        .order("coordination_number", { ascending: true });
+      const { data, error } = await withQueryTimeout(
+        client
+          .from("coordinations")
+          .select("*")
+          .order("coordination_number", { ascending: true }),
+        1500
+      );
 
       if (!error && data && data.length > 0) {
         const cleanList = (data as Coordination[]).filter(c => 
@@ -664,8 +728,9 @@ export async function getCoordinations(): Promise<Coordination[]> {
         await cache.set("enem_coordinations", cleanList, 600);
         return cleanList;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn("[Supabase] Aviso ao buscar coordenações:", err);
+      markSupabaseOffline(err?.message || "Falha ao buscar coordenações no Supabase");
     }
   }
 
@@ -863,10 +928,13 @@ export async function getVacancies(): Promise<Vacancy[]> {
   const client = getSupabaseClient();
   if (client) {
     try {
-      const { data, error } = await client
-        .from("vacancies")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const { data, error } = await withQueryTimeout(
+        client
+          .from("vacancies")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        1500
+      );
 
       if (!error && data && data.length > 0) {
         const mapped = data
@@ -896,8 +964,9 @@ export async function getVacancies(): Promise<Vacancy[]> {
         await cache.set("enem_vacancies", mapped, 300);
         return mapped;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn("[Supabase] Aviso ao buscar vagas:", err);
+      markSupabaseOffline(err?.message || "Falha ao buscar vagas no Supabase");
     }
   }
 
@@ -1248,17 +1317,27 @@ export async function getApplications(): Promise<Application[]> {
     const tableCandidates = ["applications", "contributors", "contributor", "job_applications"];
     for (const tbl of tableCandidates) {
       try {
-        const { data, error } = await client
-          .from(tbl)
-          .select("*")
-          .order("applied_at", { ascending: false });
+        const { data, error } = await withQueryTimeout(
+          client
+            .from(tbl)
+            .select("*")
+            .order("applied_at", { ascending: false }),
+          1500
+        );
 
         if (!error && data && data.length > 0) {
           const filtered = data.filter((d: any) => !memoryDeletedApplicationIds.has(String(d.id)));
           await cache.set("enem_applications", filtered, 180);
           return filtered as Application[];
         }
-      } catch {}
+        if (error) {
+          markSupabaseOffline(error.message);
+          break;
+        }
+      } catch (err: any) {
+        markSupabaseOffline(err?.message || "Falha ao buscar inscrições");
+        break;
+      }
     }
   }
 
@@ -1524,6 +1603,15 @@ export async function verifySupabaseToken(token: string) {
 }
 
 export async function testSupabaseConnection(customUrl?: string, customKey?: string) {
+  if (!customUrl && isSupabaseCircuitOpen()) {
+    return {
+      connected: false,
+      configured: true,
+      tablesCreated: false,
+      message: `Host Supabase inacessível: ${lastSupabaseFailureMessage || 'Falha de conexão / DNS'}. Modo seguro em memória ativo.`
+    };
+  }
+
   const client = getSupabaseClient(customUrl, customKey);
   if (!client) {
     return {
@@ -1534,7 +1622,10 @@ export async function testSupabaseConnection(customUrl?: string, customKey?: str
   }
 
   try {
-    const { data, error } = await client.from("vacancies").select("id").limit(1);
+    const { data, error } = await withQueryTimeout(
+      client.from("vacancies").select("id").limit(1),
+      1500
+    );
     if (error) {
       if (error.code === "42P01" || error.message.includes("does not exist")) {
         return {
@@ -1545,6 +1636,7 @@ export async function testSupabaseConnection(customUrl?: string, customKey?: str
           error: error.message
         };
       }
+      if (!customUrl) markSupabaseOffline(error.message);
       return {
         connected: false,
         configured: true,
@@ -1562,6 +1654,7 @@ export async function testSupabaseConnection(customUrl?: string, customKey?: str
     };
   } catch (err: any) {
     const msg = err.message || "";
+    if (!customUrl) markSupabaseOffline(msg);
     if (msg.includes("Unexpected token") || msg.includes("<!DOCTYPE") || msg.includes("is not valid JSON")) {
       return {
         connected: false,

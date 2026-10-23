@@ -30,6 +30,8 @@ import {
   deleteUserAccount,
   getDatabaseAndCacheStats,
   purgeFakeDataFromServer,
+  isSupabaseCircuitOpen,
+  lastSupabaseFailureMessage,
   SUPABASE_SQL_SCHEMA,
   DEFAULT_VACANCIES,
   type UserAccount
@@ -205,10 +207,6 @@ app.use((req, res, next) => {
     return res.status(200).end();
   }
 
-  // Se o ambiente Vercel remover o prefixo /api na reescrita, restaura para roteamento do Express
-  if (req.url && !req.url.startsWith("/api") && !req.url.startsWith("/_")) {
-    req.url = "/api" + (req.url.startsWith("/") ? req.url : "/" + req.url);
-  }
   next();
 });
 
@@ -336,12 +334,23 @@ app.get(["/api/auth/session", "/auth/session"], async (req, res) => {
 app.get(["/api/auth/config", "/api/supabase/public-status", "/supabase/public-status"], async (req, res) => {
   try {
     const config = getSupabaseConfig();
-    const test = await testSupabaseConnection();
+    let testResult: any = null;
+
+    if (isSupabaseCircuitOpen()) {
+      testResult = {
+        connected: false,
+        tablesCreated: false,
+        message: `Instância Supabase offline ou inacessível (${lastSupabaseFailureMessage || 'DNS não resolvido'}). Modo seguro em memória ativo.`
+      };
+    } else {
+      testResult = await testSupabaseConnection();
+    }
+
     return res.json({
       configured: config.isConfigured,
-      connected: test.connected,
-      tablesCreated: (test as any).tablesCreated ?? false,
-      message: test.message,
+      connected: testResult.connected,
+      tablesCreated: (testResult as any).tablesCreated ?? false,
+      message: testResult.message,
       url: config.url ? config.url.replace(/(https?:\/\/)([^.]+)(.*)/, "$1***$3") : null,
       authProvider: "Supabase Auth (E-mail e Senha) + Regras de Coordenação ENEM 2026"
     });
